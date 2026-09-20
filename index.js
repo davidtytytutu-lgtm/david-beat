@@ -1,198 +1,204 @@
-const http = require("http");
+const express = require("express");
 
-// ==================================================
-// CONFIGURATION
-// ==================================================
+const app = express();
 
 const PORT = process.env.PORT || 10000;
 
 const DAVID_BOT_URL =
-    process.env.DAVID_BOT_URL;
+    process.env.DAVID_BOT_URL ||
+    "https://david-anti.onrender.com/heartbeat";
 
 const HEARTBEAT_SECRET =
     process.env.HEARTBEAT_SECRET;
 
-const HEARTBEAT_DELAY = 5000;
-
+let heartbeatCount = 0;
 let lastHeartbeat = null;
 
-// ==================================================
-// SERVEUR HTTP
-// ==================================================
+app.use(express.json());
 
-const server = http.createServer((req, res) => {
+// ============================================================
+// PAGE PRINCIPALE
+// ============================================================
 
-    // ==============================================
-    // HEARTBEAT REÇU
-    // ==============================================
-
-    if (req.url === "/heartbeat") {
-
-        const authorization =
-            req.headers.authorization;
-
-        if (
-            HEARTBEAT_SECRET &&
-            authorization !==
-            `Bearer ${HEARTBEAT_SECRET}`
-        ) {
-
-            console.log(
-                "🚫 Heartbeat refusé : secret incorrect"
-            );
-
-            res.writeHead(401, {
-                "Content-Type": "application/json"
-            });
-
-            res.end(JSON.stringify({
-                status: "unauthorized"
-            }));
-
-            return;
-        }
-
-        lastHeartbeat = Date.now();
-
-        console.log(
-            "💓 Heartbeat reçu de DAVID DISCORD MOD"
-        );
-
-        res.writeHead(200, {
-            "Content-Type": "application/json"
-        });
-
-        res.end(JSON.stringify({
-            status: "ok",
-            heartbeat: true,
-            server: "DAVID-DISCORD-HEARTBEAT",
-            timestamp: Date.now()
-        }));
-
-        return;
-    }
-
-    // ==============================================
-    // STATUS
-    // ==============================================
-
-    if (req.url === "/") {
-
-        res.writeHead(200, {
-            "Content-Type":
-                "text/plain; charset=utf-8"
-        });
-
-        res.end(
-            "💓 DAVID DISCORD HEARTBEAT SERVER est en ligne !"
-        );
-
-        return;
-    }
-
-    // ==============================================
-    // 404
-    // ==============================================
-
-    res.writeHead(404);
-
-    res.end("404 - Not Found");
+app.get("/", (req, res) => {
+    res.json({
+        service: "david-beat",
+        status: "online",
+        heartbeatCount,
+        lastHeartbeat
+    });
 });
 
-// ==================================================
-// HEARTBEAT → DAVID BOT
-// ==================================================
+// ============================================================
+// RÉCEPTION HEARTBEAT DE DAVID ANTI
+// ============================================================
 
-async function sendHeartbeatToBot() {
+app.post("/heartbeat", (req, res) => {
 
-    if (!DAVID_BOT_URL) {
+    const secret =
+        req.headers["x-heartbeat-secret"];
+
+    if (
+        HEARTBEAT_SECRET &&
+        secret !== HEARTBEAT_SECRET
+    ) {
 
         console.log(
-            "⚠️ DAVID_BOT_URL n'est pas configuré."
+            "🚫 Heartbeat refusé : secret incorrect"
         );
 
-        setTimeout(
-            sendHeartbeatToBot,
-            30000
-        );
-
-        return;
+        return res.status(401).json({
+            status: "unauthorized"
+        });
     }
+
+    heartbeatCount++;
+    lastHeartbeat = new Date().toISOString();
+
+    console.log("");
+    console.log(
+        "💓 =================================="
+    );
+    console.log(
+        "💓 HEARTBEAT REÇU DE DAVID ANTI"
+    );
+    console.log(
+        `💓 Nombre : ${heartbeatCount}`
+    );
+    console.log(
+        `💓 Heure : ${lastHeartbeat}`
+    );
+    console.log(
+        "💓 =================================="
+    );
+
+    res.status(200).json({
+        status: "ok",
+        bot: "david-anti",
+        online: true,
+        heartbeat: heartbeatCount,
+        timestamp: lastHeartbeat
+    });
+});
+
+// ============================================================
+// TEST DAVID ANTI
+// ============================================================
+
+async function checkDavidAnti() {
+
+    console.log(
+        "💓 HEARTBEAT SERVER → DAVID ANTI"
+    );
 
     try {
 
-        console.log(
-            "💓 HEARTBEAT SERVER → DAVID MOD"
-        );
+        const response =
+            await fetch(
+                DAVID_BOT_URL,
+                {
+                    method: "POST",
 
-        const response = await fetch(
-            DAVID_BOT_URL,
-            {
-                headers: {
-                    "Authorization":
-                        `Bearer ${HEARTBEAT_SECRET || ""}`
+                    headers: {
+                        "Content-Type":
+                            "application/json",
+
+                        "x-heartbeat-secret":
+                            HEARTBEAT_SECRET || ""
+                    },
+
+                    body: JSON.stringify({
+                        source: "david-beat",
+                        timestamp:
+                            new Date().toISOString()
+                    })
                 }
-            }
-        );
-
-        if (!response.ok) {
-
-            throw new Error(
-                `HTTP ${response.status}`
             );
-        }
 
         const data =
-            await response.json();
+            await response.json()
+                .catch(() => ({}));
 
-        console.log(
-            "✅ DAVID MOD a répondu :",
-            data.status
-        );
+        if (response.ok) {
 
-        setTimeout(
-            sendHeartbeatToBot,
-            HEARTBEAT_DELAY
-        );
+            console.log(
+                `✅ DAVID ANTI répond : HTTP ${response.status}`,
+                data
+            );
+
+        } else {
+
+            console.error(
+                `❌ DAVID ANTI ne répond pas correctement : HTTP ${response.status}`,
+                data
+            );
+        }
 
     } catch (error) {
 
         console.error(
-            "❌ DAVID MOD ne répond pas :",
+            "❌ Impossible de contacter DAVID ANTI :",
             error.message
-        );
-
-        console.log(
-            "🔄 Nouvelle tentative dans 30 secondes..."
-        );
-
-        setTimeout(
-            sendHeartbeatToBot,
-            30000
         );
     }
 }
 
-// ==================================================
+// ============================================================
 // DÉMARRAGE
-// ==================================================
+// ============================================================
 
-server.listen(
+app.listen(
     PORT,
-    "0.0.0.0",
     () => {
 
         console.log(
-            `💓 HEARTBEAT SERVER démarré`
+            "💓 HEARTBEAT SERVER démarré"
         );
 
         console.log(
             `🌐 Port : ${PORT}`
         );
 
+        console.log(
+            `🎯 DAVID ANTI : ${DAVID_BOT_URL}`
+        );
+
+        // Premier test
         setTimeout(
-            sendHeartbeatToBot,
-            1000
+            checkDavidAnti,
+            5000
+        );
+
+        // Test toutes les 60 secondes
+        setInterval(
+            checkDavidAnti,
+            60000
+        );
+    }
+);
+
+// ============================================================
+// ERREURS
+// ============================================================
+
+process.on(
+    "unhandledRejection",
+    error => {
+
+        console.error(
+            "❌ Unhandled Rejection :",
+            error
+        );
+    }
+);
+
+process.on(
+    "uncaughtException",
+    error => {
+
+        console.error(
+            "❌ Uncaught Exception :",
+            error
         );
     }
 );
