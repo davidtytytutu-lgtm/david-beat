@@ -1,0 +1,12 @@
+{
+  "name": "david-discord-heartbeat",
+  "version": "1.0.0",
+  "description": "Heartbeat server for David Discord moderation bot",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
